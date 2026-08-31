@@ -1,10 +1,7 @@
 import type { Route } from "./+types/cart";
 import { MinusIcon, PlusIcon, TrashIcon } from "~/components/icons";
-import {
-  PLACEHOLDER_CART,
-  PLACEHOLDER_SUMMARY,
-  formatPrice,
-} from "~/lib/placeholder-data";
+import { formatPrice } from "~/lib/format";
+import { PLACEHOLDER_CART, PLACEHOLDER_SUMMARY } from "~/lib/placeholder-data";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Cart · The Online Store" }];
