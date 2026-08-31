@@ -1,40 +1,51 @@
-import { useState } from "react";
+import { data, useFetcher } from "react-router";
 
 import type { Route } from "./+types/product";
-import { useCart } from "~/lib/cart";
+import {
+  addLine,
+  readCart,
+  serializeCart,
+} from "~/lib/cart.server";
 import { formatPrice } from "~/lib/format";
 import { getProduct } from "~/lib/products";
 
-export function meta({ data }: Route.MetaArgs) {
-  const title = data?.product.title ?? "Product";
+export function meta({ data: routeData }: Route.MetaArgs) {
+  const title = routeData?.product.title ?? "Product";
   return [{ title: `${title} · The Online Store` }];
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
-  const product = await getProduct(params.productId);
-  return { product };
+export async function loader({ request, params }: Route.LoaderArgs) {
+  const [product, cart] = await Promise.all([
+    getProduct(params.productId),
+    readCart(request),
+  ]);
+  const inCart = cart.find((line) => line.id === product.id)?.quantity ?? 0;
+  return { product, inCart };
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+  const form = await request.formData();
+  const quantity = Number(form.get("quantity")) || 1;
+
+  const [product, cart] = await Promise.all([
+    getProduct(params.productId),
+    readCart(request),
+  ]);
+  const next = addLine(cart, product.id, quantity, product.stock);
+
+  return data(
+    { ok: true },
+    { headers: { "Set-Cookie": await serializeCart(next) } },
+  );
 }
 
 export default function Product({ loaderData }: Route.ComponentProps) {
-  const { product } = loaderData;
-  const { addItem, items } = useCart();
-  const [added, setAdded] = useState(false);
+  const { product, inCart } = loaderData;
+  const fetcher = useFetcher<typeof action>();
 
-  const inCart = items.find((item) => item.id === product.id)?.quantity ?? 0;
+  const adding = fetcher.state !== "idle";
   const outOfStock = product.stock <= 0;
   const atMax = inCart >= product.stock;
-
-  function handleAddToCart() {
-    addItem({
-      id: product.id,
-      title: product.title,
-      price: product.price,
-      thumbnail: product.thumbnail,
-      stock: product.stock,
-    });
-    setAdded(true);
-    window.setTimeout(() => setAdded(false), 500);
-  }
 
   return (
     <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_360px] lg:gap-12">
@@ -51,22 +62,25 @@ export default function Product({ loaderData }: Route.ComponentProps) {
         </p>
         <p className="mt-1 text-sm text-gray-500">
           {outOfStock ? "Out of stock" : `${product.stock} in stock`}
+          {inCart > 0 && ` · ${inCart} in cart`}
         </p>
 
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={outOfStock || atMax}
-          className="mt-4 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium tracking-wide text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:hover:bg-gray-300"
-        >
-          {outOfStock
-            ? "Out of stock"
-            : atMax
-              ? "Max quantity in cart"
-              : added
-                ? "Added to cart"
-                : "Add to Cart"}
-        </button>
+        <fetcher.Form method="post" className="mt-4">
+          <input type="hidden" name="quantity" value="1" />
+          <button
+            type="submit"
+            disabled={outOfStock || atMax || adding}
+            className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium tracking-wide text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:hover:bg-gray-300"
+          >
+            {outOfStock
+              ? "Out of stock"
+              : atMax
+                ? "Max quantity in cart"
+                : adding
+                  ? "Adding…"
+                  : "Add to Cart"}
+          </button>
+        </fetcher.Form>
 
         <hr className="my-5 border-gray-200" />
 

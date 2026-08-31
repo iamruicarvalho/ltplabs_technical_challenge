@@ -10,7 +10,6 @@ export interface ProductSort {
   order: "asc" | "desc";
 }
 
-/** Turn a `field-order` URL token (e.g. "price-desc") into a validated sort. */
 export function parseSort(raw: string | null): ProductSort | null {
   if (!raw) return null;
   const [field, order] = raw.split("-");
@@ -64,6 +63,28 @@ export async function getProductsByCategory(slug: string): Promise<Product[]> {
 
   const data = (await res.json()) as ProductsResponse;
   return data.products;
+}
+
+export async function searchProducts(query: string): Promise<Product[]> {
+  const params = new URLSearchParams({ q: query, limit: "0" });
+  const res = await fetch(`${BASE_URL}/products/search?${params.toString()}`);
+  if (!res.ok) {
+    throw new Response("Failed to search products", { status: 502 });
+  }
+
+  const data = (await res.json()) as ProductsResponse;
+  return data.products;
+}
+
+export function sortProducts(
+  list: Product[],
+  sort: ProductSort | null,
+): Product[] {
+  return [...list].sort((a, b) => {
+    if (!sort) return a.id - b.id;
+    const diff = a[sort.field] - b[sort.field];
+    return sort.order === "asc" ? diff : -diff;
+  });
 }
 
 export async function getProduct(id: string): Promise<Product> {

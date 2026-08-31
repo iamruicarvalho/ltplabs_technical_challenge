@@ -14,6 +14,8 @@ import {
   getProductsByCategory,
   PAGE_SIZE,
   parseSort,
+  searchProducts,
+  sortProducts,
 } from "~/lib/products";
 
 const SORT_OPTIONS = [
@@ -38,39 +40,62 @@ export async function loader({ request }: Route.LoaderArgs) {
   const selected = url.searchParams.getAll("category");
   const sort = parseSort(url.searchParams.get("sort"));
   const sortValue = sort ? `${sort.field}-${sort.order}` : null;
+  const q = url.searchParams.get("q")?.trim() ?? "";
+
+  if (q) {
+    const [categories, matches] = await Promise.all([
+      getCategories(),
+      searchProducts(q),
+    ]);
+    const valid = selected.filter((slug) =>
+      categories.some((category) => category.slug === slug),
+    );
+    const validSet = new Set(valid);
+    const filtered =
+      validSet.size > 0
+        ? matches.filter((product) => validSet.has(product.category))
+        : matches;
+    const sorted = sortProducts(filtered, sort);
+    const startIndex = (page - 1) * PAGE_SIZE;
+
+    return {
+      products: sorted.slice(startIndex, startIndex + PAGE_SIZE),
+      total: sorted.length,
+      page,
+      categories,
+      selected: valid,
+      sort: sortValue,
+      q,
+    };
+  }
 
   if (selected.length === 0) {
     const [categories, { products, total }] = await Promise.all([
       getCategories(),
       getProducts(page, sort),
     ]);
-    return { products, total, page, categories, selected, sort: sortValue };
+    return { products, total, page, categories, selected, sort: sortValue, q };
   }
 
   const categories = await getCategories();
 
-  // the api filters one category per request, so we fetch each selected category
+  // the API filters one category per request, so we fetch each selected category
   // in full and then merge them, sort and paginate the combined list here.
   const valid = selected.filter((slug) =>
     categories.some((category) => category.slug === slug),
   );
   const lists = await Promise.all(valid.map(getProductsByCategory));
-  const merged = lists.flat();
-  merged.sort((a, b) => {
-    if (!sort) return a.id - b.id;
-    const diff = a[sort.field] - b[sort.field];
-    return sort.order === "asc" ? diff : -diff;
-  });
-
+  const sorted = sortProducts(lists.flat(), sort);
   const startIndex = (page - 1) * PAGE_SIZE;
 
   return {
-    products: merged.slice(startIndex, startIndex + PAGE_SIZE),
-    total: merged.length,
+    products: sorted.slice(startIndex, startIndex + PAGE_SIZE),
+    total: sorted.length,
     page,
     categories,
     selected: valid,
     sort: sortValue,
+    q,
   };
 }
 
@@ -78,19 +103,20 @@ export async function loader({ request }: Route.LoaderArgs) {
 function listHref(opts: {
   selected: string[];
   sort: string | null;
+  q?: string;
   page?: number;
 }): string {
   const params = new URLSearchParams();
   for (const s of opts.selected) params.append("category", s);
-  
+
   if (opts.sort) params.set("sort", opts.sort);
+  if (opts.q) params.set("q", opts.q);
   if (opts.page && opts.page > 1) params.set("page", String(opts.page));
   const query = params.toString();
 
   return query ? `/?${query}` : "/";
 }
 
-/** Add or remove one slug from the selected set. */
 function toggleCategory(selected: string[], slug: string): string[] {
   return selected.includes(slug)
     ? selected.filter((s) => s !== slug)
@@ -139,7 +165,7 @@ function PageArrow({
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { products, total, page, categories, selected, sort } = loaderData;
+  const { products, total, page, categories, selected, sort, q } = loaderData;
   const pageCount = Math.ceil(total / PAGE_SIZE);
   const start = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const end = Math.min(page * PAGE_SIZE, total);
@@ -150,6 +176,19 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="flex flex-col gap-10 lg:flex-row">
         {/* Product column */}
         <div className="flex-1">
+          {q && (
+            <p className="mb-4 text-sm text-gray-600">
+              Results for{" "}
+              <span className="font-medium text-gray-900">“{q}”</span>{" "}
+              <Link
+                to={listHref({ selected, sort })}
+                className="text-gray-500 underline hover:text-gray-900"
+              >
+                clear
+              </Link>
+            </p>
+          )}
+
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-4">
             <details className="group relative">
@@ -162,7 +201,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   (option) => (
                     <Link
                       key={option.value ?? "default"}
-                      to={listHref({ selected, sort: option.value })}
+                      to={listHref({ selected, sort: option.value, q })}
                       onClick={(e) =>
                         e.currentTarget.closest("details")?.removeAttribute("open")
                       }
@@ -186,7 +225,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
           {products.length === 0 ? (
             <p className="mt-10 text-sm text-gray-500">
-              No products match the selected categories.
+              {q
+                ? `No products match “${q}”.`
+                : "No products match the selected categories."}
             </p>
           ) : (
             <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-3">
@@ -220,7 +261,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               aria-label="Pagination"
             >
               <PageArrow
-                to={listHref({ selected, sort, page: page - 1 })}
+                to={listHref({ selected, sort, q, page: page - 1 })}
                 disabled={page <= 1}
                 label="Previous page"
               >
@@ -238,7 +279,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 ) : (
                   <Link
                     key={entry}
-                    to={listHref({ selected, sort, page: entry })}
+                    to={listHref({ selected, sort, q, page: entry })}
                     aria-current={entry === page ? "page" : undefined}
                     className={
                       "grid h-8 w-8 place-items-center rounded-full text-sm " +
@@ -253,7 +294,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               )}
 
               <PageArrow
-                to={listHref({ selected, sort, page: page + 1 })}
+                to={listHref({ selected, sort, q, page: page + 1 })}
                 disabled={page >= pageCount}
                 label="Next page"
               >
@@ -269,7 +310,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <h2 className="text-sm font-medium text-gray-900">Categories</h2>
             {selected.length > 0 && (
               <Link
-                to={listHref({ selected: [], sort })}
+                to={listHref({ selected: [], sort, q })}
                 className="text-xs text-gray-500 hover:text-gray-900"
               >
                 Clear
@@ -285,6 +326,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     to={listHref({
                       selected: toggleCategory(selected, category.slug),
                       sort,
+                      q,
                     })}
                     aria-pressed={checked}
                     className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"

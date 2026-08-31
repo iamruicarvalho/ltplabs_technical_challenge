@@ -10,7 +10,11 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { SiteHeader } from "./components/site-header";
-import { CartProvider } from "./lib/cart";
+import { cartCount, readCart } from "./lib/cart.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  return { cartCount: cartCount(await readCart(request)) };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -43,14 +47,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+export default function App({ loaderData }: Route.ComponentProps) {
   return (
-    <CartProvider>
-      <SiteHeader />
+    <>
+      <SiteHeader cartCount={loaderData.cartCount} />
       <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <Outlet />
       </main>
-    </CartProvider>
+    </>
   );
 }
 
