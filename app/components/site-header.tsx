@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { BagIcon, CloseIcon, MenuIcon, SearchIcon, UserIcon } from "./icons";
+import { useCart } from "~/lib/cart";
 
 const NAV_LINKS = [
   { label: "Home", to: "/" },
@@ -13,6 +14,7 @@ const NAV_LINKS = [
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { itemCount, hydrated } = useCart();
 
   return (
     <header className="border-b border-gray-200">
@@ -65,10 +67,19 @@ export function SiteHeader() {
           </button>
           <Link
             to="/cart"
-            aria-label="Cart"
-            className="text-gray-700 hover:text-gray-950"
+            aria-label={
+              hydrated && itemCount > 0
+                ? `Cart, ${itemCount} item${itemCount === 1 ? "" : "s"}`
+                : "Cart"
+            }
+            className="relative text-gray-700 hover:text-gray-950"
           >
             <BagIcon />
+            {hydrated && itemCount > 0 && (
+              <span className="absolute -top-2 -right-2 grid h-4 min-w-4 place-items-center rounded-full bg-slate-900 px-1 text-[10px] leading-none font-medium text-white">
+                {itemCount}
+              </span>
+            )}
           </Link>
         </div>
       </div>
