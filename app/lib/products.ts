@@ -1,13 +1,40 @@
 import type { Category, Product, ProductsResponse } from "~/lib/types";
 
-const BASE_URL = process.env.PRODUCTS_API_URL ?? "https://dummyjson.com";
+const BASE_URL =
+  (typeof process !== "undefined" && process.env.PRODUCTS_API_URL) ||
+  "https://dummyjson.com";
 export const PAGE_SIZE = 15;
 
-export async function getProducts(page = 1): Promise<ProductsResponse> {
+export interface ProductSort {
+  field: "price" | "discountPercentage" | "rating";
+  order: "asc" | "desc";
+}
+
+/** Turn a `field-order` URL token (e.g. "price-desc") into a validated sort. */
+export function parseSort(raw: string | null): ProductSort | null {
+  if (!raw) return null;
+  const [field, order] = raw.split("-");
+  
+  if (field !== "price" && field !== "discountPercentage" && field !== "rating") {
+    return null;
+  }
+  if (order !== "asc" && order !== "desc") return null;
+  
+  return { field, order };
+}
+
+export async function getProducts(
+  page = 1,
+  sort: ProductSort | null = null,
+): Promise<ProductsResponse> {
   const params = new URLSearchParams({
     limit: PAGE_SIZE.toString(),
     skip: ((page - 1) * PAGE_SIZE).toString(),
   });
+  if (sort) {
+    params.set("sortBy", sort.field);
+    params.set("order", sort.order);
+  }
 
   const res = await fetch(`${BASE_URL}/products?${params.toString()}`);
   if (!res.ok) {
@@ -37,4 +64,16 @@ export async function getProductsByCategory(slug: string): Promise<Product[]> {
 
   const data = (await res.json()) as ProductsResponse;
   return data.products;
+}
+
+export async function getProduct(id: string): Promise<Product> {
+  const res = await fetch(`${BASE_URL}/products/${encodeURIComponent(id)}`);
+  if (res.status === 404) {
+    throw new Response("Product not found", { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Response("Failed to load product", { status: 502 });
+  }
+
+  return (await res.json()) as Product;
 }

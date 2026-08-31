@@ -1,25 +1,33 @@
 import type { Route } from "./+types/product";
+import { formatPrice } from "~/lib/format";
+import { getProduct } from "~/lib/products";
 
-export function meta(_: Route.MetaArgs) {
-  return [{ title: "Product title · The Online Store" }];
+export function meta({ data }: Route.MetaArgs) {
+  const title = data?.product.title ?? "Product";
+  return [{ title: `${title} · The Online Store` }];
 }
 
-const DESCRIPTION =
-  "Praesent ullamcorper non metus non laoreet. Nam quis felis lorem. Nullam " +
-  "pellentesque tristique nibh, a malesuada lacus. Donec ornare dolor a justo " +
-  "venenatis tempus. Quisque sed dui et est lacinia interdum ac sed massa. " +
-  "Curabitur ut urna massa. Proin ligula enim, vulputate nec diam vitae, " +
-  "gravida ullamcorper nulla. Nulla ut velit ut erat ullamcorper aliquet et " +
-  "auctor odio.";
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await getProduct(params.productId);
+  return { product };
+}
 
-export default function Product() {
+export default function Product({ loaderData }: Route.ComponentProps) {
+  const { product } = loaderData;
+
   return (
     <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_360px] lg:gap-12">
-      <div className="aspect-4/3 w-full rounded-sm bg-gray-200 md:aspect-auto md:h-110" />
+      <img
+        className="aspect-square w-full rounded-sm bg-gray-100 object-contain p-6 md:aspect-auto md:h-[28rem]"
+        src={product.thumbnail}
+        alt={product.title}
+      />
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Product title</h1>
-        <p className="mt-1 text-xl font-bold text-gray-900">$129.99</p>
+        <h1 className="text-2xl font-bold text-gray-900">{product.title}</h1>
+        <p className="mt-1 text-xl font-bold text-gray-900">
+          {formatPrice(product.price)}
+        </p>
 
         <button
           type="button"
@@ -31,7 +39,9 @@ export default function Product() {
         <hr className="my-5 border-gray-200" />
 
         <h2 className="text-sm font-medium text-gray-900">Product Details</h2>
-        <p className="mt-2 text-sm leading-relaxed text-gray-600">{DESCRIPTION}</p>
+        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+          {product.description}
+        </p>
       </div>
     </div>
   );
